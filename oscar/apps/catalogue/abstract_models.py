@@ -68,6 +68,10 @@ class AbstractProductClass(models.Model):
     def __unicode__(self):
         return self.name
 
+    @property
+    def has_attributes(self):
+        return self.attributes.exists()
+
 
 class AbstractCategory(MP_Node):
     """
@@ -233,7 +237,8 @@ class AbstractProduct(models.Model):
                     " this product)."))
 
     # Title is mandatory for canonical products but optional for child products
-    title = models.CharField(_('Product title'), max_length=255, blank=True)
+    title = models.CharField(pgettext_lazy(u'Product title', u'Title'),
+                             max_length=255, blank=True)
     slug = models.SlugField(_('Slug'), max_length=255, unique=False)
     description = models.TextField(_('Description'), blank=True)
 
@@ -418,33 +423,33 @@ class AbstractProduct(models.Model):
         return ", ".join(pairs)
 
     @property
-    def min_variant_price_incl_tax(self):
+    def min_child_price_incl_tax(self):
         """
-        Return minimum variant price including tax
+        Return minimum child product price including tax
         """
-        return self._min_variant_price('price_incl_tax')
+        return self._min_child_price('price_incl_tax')
 
     @property
-    def min_variant_price_excl_tax(self):
+    def min_child_price_excl_tax(self):
         """
-        Return minimum variant price excluding tax
+        Return minimum child product price excluding tax
         """
-        return self._min_variant_price('price_excl_tax')
+        return self._min_child_price('price_excl_tax')
 
-    def _min_variant_price(self, property):
+    def _min_child_price(self, property):
         """
-        Return minimum variant price
+        Return minimum child product price
         """
         prices = []
-        for variant in self.variants.all():
-            if variant.has_stockrecords:
-                prices.append(getattr(variant.stockrecord, property))
+        for child in self.children.all():
+            if child.has_stockrecords:
+                prices.append(getattr(child.stockrecord, property))
         if not prices:
             return None
         prices.sort()
         return prices[0]
 
-    # Deprecated properties
+    # The properties below are based on deprecated naming conventions
 
     @property
     @deprecated
@@ -466,14 +471,31 @@ class AbstractProduct(models.Model):
     @deprecated
     def is_group(self):
         """
-        Test if this is a top level product and has more than 0 variants
+        Test if this is a parent product
         """
         return self.is_parent
 
     @property
+    @deprecated
     def is_variant(self):
         """Return True if a product is not a top level product"""
         return self.is_child
+
+    @property
+    @deprecated
+    def min_variant_price_incl_tax(self):
+        """
+        Return minimum variant price including tax
+        """
+        return self._min_child_price('price_incl_tax')
+
+    @property
+    @deprecated
+    def min_variant_price_excl_tax(self):
+        """
+        Return minimum variant price excluding tax
+        """
+        return self._min_child_price('price_excl_tax')
 
     # Wrappers
 
