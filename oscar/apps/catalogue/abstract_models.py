@@ -1,6 +1,5 @@
-from django.core.urlresolvers import reverse
 import os
-import six
+from django.utils import six
 from itertools import chain
 from datetime import datetime, date
 import logging
@@ -11,17 +10,19 @@ from django.conf import settings
 from django.contrib.staticfiles.finders import find
 from django.core.exceptions import ValidationError, ImproperlyConfigured
 from django.core.files.base import File
+from django.core.urlresolvers import reverse
 from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import Sum, Count
+from django.utils.encoding import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _, pgettext_lazy
 from django.utils.functional import cached_property
 from django.contrib.contenttypes.generic import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 
 from treebeard.mp_tree import MP_Node
-from oscar.core.decorators import deprecated
 
+from oscar.core.decorators import deprecated
 from oscar.core.utils import slugify
 from oscar.core.loading import get_classes, get_model
 from oscar.models.fields import NullCharField, AutoSlugField
@@ -30,6 +31,7 @@ ProductManager, BrowsableProductManager = get_classes(
     'catalogue.managers', ['ProductManager', 'BrowsableProductManager'])
 
 
+@python_2_unicode_compatible
 class AbstractProductClass(models.Model):
     """
     Used for defining options and attributes for a subset of products.
@@ -61,11 +63,12 @@ class AbstractProductClass(models.Model):
 
     class Meta:
         abstract = True
+        app_label = 'catalogue'
         ordering = ['name']
-        verbose_name = _("Product Class")
-        verbose_name_plural = _("Product Classes")
+        verbose_name = _("Product class")
+        verbose_name_plural = _("Product classes")
 
-    def __unicode__(self):
+    def __str__(self):
         return self.name
 
     @property
@@ -73,6 +76,7 @@ class AbstractProductClass(models.Model):
         return self.attributes.exists()
 
 
+@python_2_unicode_compatible
 class AbstractCategory(MP_Node):
     """
     A product category. Merely used for navigational purposes; has no
@@ -92,7 +96,7 @@ class AbstractCategory(MP_Node):
     _slug_separator = '/'
     _full_name_separator = ' > '
 
-    def __unicode__(self):
+    def __str__(self):
         return self.full_name
 
     def update_slug(self, commit=True):
@@ -166,6 +170,7 @@ class AbstractCategory(MP_Node):
 
     class Meta:
         abstract = True
+        app_label = 'catalogue'
         ordering = ['full_name']
         verbose_name = _('Category')
         verbose_name_plural = _('Categories')
@@ -177,6 +182,7 @@ class AbstractCategory(MP_Node):
         return self.get_children().count()
 
 
+@python_2_unicode_compatible
 class AbstractProductCategory(models.Model):
     """
     Joining model between products and categories. Exists to allow customising.
@@ -187,15 +193,17 @@ class AbstractProductCategory(models.Model):
 
     class Meta:
         abstract = True
+        app_label = 'catalogue'
         ordering = ['product', 'category']
-        verbose_name = _('Product Category')
-        verbose_name_plural = _('Product Categories')
         unique_together = ('product', 'category')
+        verbose_name = _('Product category')
+        verbose_name_plural = _('Product categories')
 
-    def __unicode__(self):
+    def __str__(self):
         return u"<productcategory for product '%s'>" % self.product
 
 
+@python_2_unicode_compatible
 class AbstractProduct(models.Model):
     """
     The base product object
@@ -294,6 +302,7 @@ class AbstractProduct(models.Model):
 
     class Meta:
         abstract = True
+        app_label = 'catalogue'
         ordering = ['-date_created']
         verbose_name = _('Product')
         verbose_name_plural = _('Products')
@@ -302,7 +311,7 @@ class AbstractProduct(models.Model):
         super(AbstractProduct, self).__init__(*args, **kwargs)
         self.attr = ProductAttributesContainer(product=self)
 
-    def __unicode__(self):
+    def __str__(self):
         if self.is_child:
             return u"%s (%s)" % (self.get_title(), self.attribute_summary)
         return self.get_title()
@@ -520,6 +529,16 @@ class AbstractProduct(models.Model):
         return None
     get_product_class.short_description = _("Product class")
 
+    def get_categories(self):
+        """
+        Return a product's categories or parent's if there is a parent product.
+        """
+        if self.is_child:
+            return self.parent.categories
+        else:
+            return self.categories
+    get_categories.short_description = _("Categories")
+
     # Images
 
     def get_missing_image(self):
@@ -620,10 +639,11 @@ class AbstractProductRecommendation(models.Model):
 
     class Meta:
         abstract = True
-        verbose_name = _('Product Recommendation')
-        verbose_name_plural = _('Product Recomendations')
+        app_label = 'catalogue'
         ordering = ['primary', '-ranking']
         unique_together = ('primary', 'recommendation')
+        verbose_name = _('Product recommendation')
+        verbose_name_plural = _('Product recomendations')
 
 
 class ProductAttributesContainer(object):
@@ -645,7 +665,7 @@ class ProductAttributesContainer(object):
 
     def __getattr__(self, name):
         if not name.startswith('_') and not self.initialised:
-            values = list(self.get_values().select_related('attribute'))
+            values = self.get_values().select_related('attribute')
             for v in values:
                 setattr(self, v.attribute.code, v.value)
             self.initialised = True
@@ -692,6 +712,7 @@ class ProductAttributesContainer(object):
                 attribute.save_value(self.product, value)
 
 
+@python_2_unicode_compatible
 class AbstractProductAttribute(models.Model):
     """
     Defines an attribute for a product class. (For example, number_of_pages for
@@ -743,9 +764,10 @@ class AbstractProductAttribute(models.Model):
 
     class Meta:
         abstract = True
+        app_label = 'catalogue'
         ordering = ['code']
-        verbose_name = _('Product Attribute')
-        verbose_name_plural = _('Product Attributes')
+        verbose_name = _('Product attribute')
+        verbose_name_plural = _('Product attributes')
 
     @property
     def is_option(self):
@@ -755,7 +777,7 @@ class AbstractProductAttribute(models.Model):
     def is_file(self):
         return self.type in [self.FILE, self.IMAGE]
 
-    def __unicode__(self):
+    def __str__(self):
         return self.name
 
     def save_value(self, product, value):
@@ -846,6 +868,7 @@ class AbstractProductAttribute(models.Model):
     _validate_image = _validate_file
 
 
+@python_2_unicode_compatible
 class AbstractProductAttributeValue(models.Model):
     """
     The "through" model for the m2m relationship between catalogue.Product and
@@ -897,11 +920,12 @@ class AbstractProductAttributeValue(models.Model):
 
     class Meta:
         abstract = True
-        verbose_name = _('Product Attribute Value')
-        verbose_name_plural = _('Product Attribute Values')
+        app_label = 'catalogue'
         unique_together = ('attribute', 'product')
+        verbose_name = _('Product attribute value')
+        verbose_name_plural = _('Product attribute values')
 
-    def __unicode__(self):
+    def __str__(self):
         return self.summary()
 
     def summary(self):
@@ -931,7 +955,7 @@ class AbstractProductAttributeValue(models.Model):
         Returns the unicode representation of the related model. You likely
         want to customise this (and maybe _entity_as_html) if you use entities.
         """
-        return unicode(self.value)
+        return six.text_type(self.value)
 
     @property
     def value_as_html(self):
@@ -948,6 +972,7 @@ class AbstractProductAttributeValue(models.Model):
         return mark_safe(self.value)
 
 
+@python_2_unicode_compatible
 class AbstractAttributeOptionGroup(models.Model):
     """
     Defines a group of options that collectively may be used as an
@@ -957,13 +982,14 @@ class AbstractAttributeOptionGroup(models.Model):
     """
     name = models.CharField(_('Name'), max_length=128)
 
-    def __unicode__(self):
+    def __str__(self):
         return self.name
 
     class Meta:
         abstract = True
-        verbose_name = _('Attribute Option Group')
-        verbose_name_plural = _('Attribute Option Groups')
+        app_label = 'catalogue'
+        verbose_name = _('Attribute option group')
+        verbose_name_plural = _('Attribute option groups')
 
     @property
     def option_summary(self):
@@ -971,6 +997,7 @@ class AbstractAttributeOptionGroup(models.Model):
         return ", ".join(options)
 
 
+@python_2_unicode_compatible
 class AbstractAttributeOption(models.Model):
     """
     Provides an option within an option group for an attribute type
@@ -981,15 +1008,17 @@ class AbstractAttributeOption(models.Model):
         verbose_name=_("Group"))
     option = models.CharField(_('Option'), max_length=255)
 
-    def __unicode__(self):
+    def __str__(self):
         return self.option
 
     class Meta:
         abstract = True
-        verbose_name = _('Attribute Option')
-        verbose_name_plural = _('Attribute Options')
+        app_label = 'catalogue'
+        verbose_name = _('Attribute option')
+        verbose_name_plural = _('Attribute options')
 
 
+@python_2_unicode_compatible
 class AbstractOption(models.Model):
     """
     An option that can be selected for a particular item when the product
@@ -1016,10 +1045,11 @@ class AbstractOption(models.Model):
 
     class Meta:
         abstract = True
+        app_label = 'catalogue'
         verbose_name = _("Option")
         verbose_name_plural = _("Options")
 
-    def __unicode__(self):
+    def __str__(self):
         return self.name
 
     @property
@@ -1065,6 +1095,7 @@ class MissingProductImage(object):
                                            settings.MEDIA_ROOT))
 
 
+@python_2_unicode_compatible
 class AbstractProductImage(models.Model):
     """
     An image of a product
@@ -1084,14 +1115,15 @@ class AbstractProductImage(models.Model):
 
     class Meta:
         abstract = True
-        unique_together = ("product", "display_order")
+        app_label = 'catalogue'
         # Any custom models should ensure that this ordering is unchanged, or
         # your query count will explode. See AbstractProduct.primary_image.
         ordering = ["display_order"]
-        verbose_name = _('Product Image')
-        verbose_name_plural = _('Product Images')
+        unique_together = ("product", "display_order")
+        verbose_name = _('Product image')
+        verbose_name_plural = _('Product images')
 
-    def __unicode__(self):
+    def __str__(self):
         return u"Image of '%s'" % self.product
 
     def is_primary(self):
@@ -1099,3 +1131,13 @@ class AbstractProductImage(models.Model):
         Return bool if image display order is 0
         """
         return self.display_order == 0
+
+    def delete(self, *args, **kwargs):
+        """
+        Always keep the display_order as consecutive integers. This avoids
+        issue #855.
+        """
+        super(AbstractProductImage, self).delete(*args, **kwargs)
+        for idx, image in enumerate(self.product.images.all()):
+            image.display_order = idx
+            image.save()
