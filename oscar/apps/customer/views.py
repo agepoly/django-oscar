@@ -43,7 +43,8 @@ User = get_user_model()
 # =======
 # Account
 # =======
-
+class NothingView(RedirectView):
+    url = settings.OSCAR_HOMEPAGE
 
 class AccountSummaryView(RedirectView):
     """
@@ -55,142 +56,12 @@ class AccountSummaryView(RedirectView):
     url = reverse_lazy(settings.OSCAR_ACCOUNTS_REDIRECT_URL)
 
 
-class AccountRegistrationView(RegisterUserMixin, FormView):
-    form_class = EmailUserCreationForm
-    template_name = 'customer/registration.html'
-    redirect_field_name = 'next'
-
-    def get(self, request, *args, **kwargs):
-        if request.user.is_authenticated():
-            return HttpResponseRedirect(settings.LOGIN_REDIRECT_URL)
-        return super(AccountRegistrationView, self).get(
-            request, *args, **kwargs)
-
-    def get_logged_in_redirect(self):
-        return reverse('customer:summary')
-
-    def get_form_kwargs(self):
-        kwargs = super(AccountRegistrationView, self).get_form_kwargs()
-        kwargs['initial'] = {
-            'email': self.request.GET.get('email', ''),
-            'redirect_url': self.request.GET.get(self.redirect_field_name, '')
-        }
-        kwargs['host'] = self.request.get_host()
-        return kwargs
-
-    def get_context_data(self, *args, **kwargs):
-        ctx = super(AccountRegistrationView, self).get_context_data(
-            *args, **kwargs)
-        ctx['cancel_url'] = self.request.META.get('HTTP_REFERER', None)
-        return ctx
-
-    def form_valid(self, form):
-        self.register_user(form)
-        return HttpResponseRedirect(
-            form.cleaned_data['redirect_url'])
+class AccountRegistrationView(NothingView):
+    pass
 
 
-class AccountAuthView(RegisterUserMixin, TemplateView):
-    """
-    This is actually a slightly odd double form view
-    """
-    template_name = 'customer/login_registration.html'
-    login_prefix, registration_prefix = 'login', 'registration'
-    login_form_class = EmailAuthenticationForm
-    registration_form_class = EmailUserCreationForm
-    redirect_field_name = 'next'
-
-    def get(self, request, *args, **kwargs):
-        if request.user.is_authenticated():
-            return HttpResponseRedirect(settings.LOGIN_REDIRECT_URL)
-        return super(AccountAuthView, self).get(
-            request, *args, **kwargs)
-
-    def get_context_data(self, *args, **kwargs):
-        ctx = super(AccountAuthView, self).get_context_data(*args, **kwargs)
-        ctx.update(kwargs)
-
-        # Don't pass request as we don't want to trigger validation of BOTH
-        # forms.
-        if 'login_form' not in kwargs:
-            ctx['login_form'] = self.get_login_form()
-        if 'registration_form' not in kwargs:
-            ctx['registration_form'] = self.get_registration_form()
-        return ctx
-
-    def get_login_form(self, request=None):
-        return self.login_form_class(**self.get_login_form_kwargs(request))
-
-    def get_login_form_kwargs(self, request=None):
-        kwargs = {}
-        kwargs['host'] = self.request.get_host()
-        kwargs['prefix'] = self.login_prefix
-        kwargs['initial'] = {
-            'redirect_url': self.request.GET.get(self.redirect_field_name, ''),
-        }
-        if request and request.method in ('POST', 'PUT'):
-            kwargs.update({
-                'data': request.POST,
-                'files': request.FILES,
-            })
-        return kwargs
-
-    def get_registration_form(self, request=None):
-        return self.registration_form_class(
-            **self.get_registration_form_kwargs(request))
-
-    def get_registration_form_kwargs(self, request=None):
-        kwargs = {}
-        kwargs['host'] = self.request.get_host()
-        kwargs['prefix'] = self.registration_prefix
-        kwargs['initial'] = {
-            'redirect_url': self.request.GET.get(self.redirect_field_name, ''),
-        }
-        if request and request.method in ('POST', 'PUT'):
-            kwargs.update({
-                'data': request.POST,
-                'files': request.FILES,
-            })
-        return kwargs
-
-    def post(self, request, *args, **kwargs):
-        # Use the name of the submit button to determine which form to validate
-        if u'login_submit' in request.POST:
-            return self.validate_login_form()
-        elif u'registration_submit' in request.POST:
-            return self.validate_registration_form()
-        return self.get(request)
-
-    def validate_login_form(self):
-        form = self.get_login_form(self.request)
-        if form.is_valid():
-            user = form.get_user()
-
-            # Grab a reference to the session ID before logging in
-            old_session_key = self.request.session.session_key
-
-            auth_login(self.request, form.get_user())
-
-            # Raise signal robustly (we don't want exceptions to crash the
-            # request handling). We use a custom signal as we want to track the
-            # session key before calling login (which cycles the session ID).
-            signals.user_logged_in.send_robust(
-                sender=self, request=self.request, user=user,
-                old_session_key=old_session_key)
-
-            return HttpResponseRedirect(form.cleaned_data['redirect_url'])
-
-        ctx = self.get_context_data(login_form=form)
-        return self.render_to_response(ctx)
-
-    def validate_registration_form(self):
-        form = self.get_registration_form(self.request)
-        if form.is_valid():
-            self.register_user(form)
-            return HttpResponseRedirect(form.cleaned_data['redirect_url'])
-
-        ctx = self.get_context_data(registration_form=form)
-        return self.render_to_response(ctx)
+class AccountAuthView(NothingView):
+    url = settings.LOGIN_URL
 
 
 class LogoutView(RedirectView):
@@ -261,103 +132,16 @@ class ProfileView(PageTitleMixin, TemplateView):
         }
 
 
-class ProfileUpdateView(PageTitleMixin, FormView):
-    form_class = ProfileForm
-    template_name = 'customer/profile/profile_form.html'
-    communication_type_code = 'EMAIL_CHANGED'
-    page_title = _('Edit Profile')
-    active_tab = 'profile'
-
-    def get_form_kwargs(self):
-        kwargs = super(ProfileUpdateView, self).get_form_kwargs()
-        kwargs['user'] = self.request.user
-        return kwargs
-
-    def form_valid(self, form):
-        # Grab current user instance before we save form.  We may need this to
-        # send a warning email if the email address is changed.
-        try:
-            old_user = User.objects.get(id=self.request.user.id)
-        except User.DoesNotExist:
-            old_user = None
-
-        form.save()
-
-        # We have to look up the email address from the form's
-        # cleaned data because the object created by form.save() can
-        # either be a user or profile instance depending whether a profile
-        # class has been specified by the AUTH_PROFILE_MODULE setting.
-        new_email = form.cleaned_data['email']
-        if old_user and new_email != old_user.email:
-            # Email address has changed - send a confirmation email to the old
-            # address including a password reset link in case this is a
-            # suspicious change.
-            ctx = {
-                'user': self.request.user,
-                'site': get_current_site(self.request),
-                'reset_url': get_password_reset_url(old_user),
-                'new_email': new_email,
-            }
-            msgs = CommunicationEventType.objects.get_and_render(
-                code=self.communication_type_code, context=ctx)
-            Dispatcher().dispatch_user_messages(old_user, msgs)
-
-        messages.success(self.request, _("Profile updated"))
-        return HttpResponseRedirect(self.get_success_url())
-
-    def get_success_url(self):
-        return reverse('customer:profile-view')
+class ProfileUpdateView(NothingView):
+    pass
 
 
-class ProfileDeleteView(PageTitleMixin, FormView):
-    form_class = ConfirmPasswordForm
-    template_name = 'customer/profile/profile_delete.html'
-    page_title = _('Delete profile')
-    active_tab = 'profile'
-    success_url = settings.OSCAR_HOMEPAGE
+class ProfileDeleteView(NothingView):
+    pass
+   
 
-    def get_form_kwargs(self):
-        kwargs = super(ProfileDeleteView, self).get_form_kwargs()
-        kwargs['user'] = self.request.user
-        return kwargs
-
-    def form_valid(self, form):
-        self.request.user.delete()
-        messages.success(
-            self.request,
-            _("Your profile has now been deleted. Thanks for using the site."))
-        return HttpResponseRedirect(self.get_success_url())
-
-
-class ChangePasswordView(PageTitleMixin, FormView):
-    form_class = PasswordChangeForm
-    template_name = 'customer/profile/change_password_form.html'
-    communication_type_code = 'PASSWORD_CHANGED'
-    page_title = _('Change Password')
-    active_tab = 'profile'
-
-    def get_form_kwargs(self):
-        kwargs = super(ChangePasswordView, self).get_form_kwargs()
-        kwargs['user'] = self.request.user
-        return kwargs
-
-    def form_valid(self, form):
-        form.save()
-        messages.success(self.request, _("Password updated"))
-
-        ctx = {
-            'user': self.request.user,
-            'site': get_current_site(self.request),
-            'reset_url': get_password_reset_url(self.request.user),
-        }
-        msgs = CommunicationEventType.objects.get_and_render(
-            code=self.communication_type_code, context=ctx)
-        Dispatcher().dispatch_user_messages(self.request.user, msgs)
-
-        return HttpResponseRedirect(self.get_success_url())
-
-    def get_success_url(self):
-        return reverse('customer:profile-view')
+class ChangePasswordView(NothingView):
+    pass
 
 
 # =============
