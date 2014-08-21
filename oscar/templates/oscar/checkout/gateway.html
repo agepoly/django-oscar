@@ -28,30 +28,6 @@
             </div>
         </div>
 
-        <div class="control-group {% if form.password.errors %}error{% endif %}">
-            {{ form.options.errors }}
-            <div class="controls">
-                <div class="radio">
-                    {{ form.options.2 }}
-                    <div class="form-inline">
-                        {{ form.password }}
-                        <small><a href="{% url 'password-reset' %}" tabindex="-1">{% trans "Get a password reminder" %}</a></small>
-                        {% for error in form.password.errors %}
-                            <span class="error-block">{{ error }}</span>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="control-group">
-            <div class="controls">
-                <div class="radio">
-                    {{ form.options.1 }}
-                </div>
-            </div>
-        </div>
-
         <div class="form-actions">
             <div class="row-fluid">
                 <div class="span3">
